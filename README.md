@@ -8,4 +8,4 @@ MizuCrack adalah alat diagnostik dan analyzer jaringan (Client-Server) yang ditu
 - 🎨 **Clean UI:** Antarmuka yang tersembunyi di `CoreGui` agar tidak terdeteksi oleh script lokal.
 - 🔍 **Real-Time Anomaly Detector:** Mendeteksi pola spam pada `ReplicatePullAlert` dan `CleanupCast`.
 
-> **Disclaimer:** Project ini dibuat untuk tujuan edukasi dan diagnostik keamanan (White-hat).
+> **Disclaimer:** Project ini dibuat untuk tujuan Cracking dan diagnostik celah bug untuk cheater (black-hat).
