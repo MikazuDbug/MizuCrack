@@ -239,3 +239,283 @@ return function()
             
             -- Corner
             local corner = Instance.new("UICorner", btn)
+            corner.CornerRadius = UDim.new(0, 6)
+            
+            -- Store reference
+            self.Elements[btnData.Name] = btn
+            
+            -- Click handler
+            btn.MouseButton1Click:Connect(function()
+                if btnData.Toggle then
+                    local state = not Core.State.Recording[btnData.Name:lower()]
+                    Core.State.Recording[btnData.Name:lower()] = state
+                    btn.Text = (state and "🟢 " or "🔴 ") .. btnData.Name
+                    btn.BackgroundColor3 = state and Color3.fromRGB(0, 200, 0) or btnData.Color
+                else
+                    self:HandleAction(btnData.Name)
+                end
+            end)
+        end
+        
+        -- Status text
+        local status = Instance.new("TextLabel", bar)
+        status.Size = UDim2.new(1, 0, 0, 15)
+        status.Position = UDim2.new(0, 0, 1, 5)
+        status.BackgroundTransparency = 1
+        status.Text = "Ready | Logs: 0 | Remotes: 0"
+        status.TextColor3 = Color3.fromRGB(150, 150, 150)
+        status.Font = Enum.Font.Gotham
+        status.TextSize = 10
+        status.TextXAlignment = Enum.TextXAlignment.Left
+        
+        self.Elements.Status = status
+    end
+    
+    -- Create minimized button
+    function UI:CreateMinimizedButton()
+        local btn = Instance.new("TextButton", self.Elements.Screen)
+        btn.Size = UDim2.new(0, 45, 0, 45)
+        btn.Position = UDim2.new(0, 50, 0, 50)
+        btn.BackgroundColor3 = self.Colors.Main
+        btn.Text = "M"
+        btn.TextColor3 = self.Colors.Stroke
+        btn.Font = Enum.Font.GothamBlack
+        btn.TextSize = 20
+        btn.Visible = false
+        btn.ClipsDescendants = true
+        
+        -- Corner
+        local corner = Instance.new("UICorner", btn)
+        corner.CornerRadius = UDim.new(1, 0)
+        
+        -- Stroke
+        local stroke = Instance.new("UIStroke", btn)
+        stroke.Color = self.Colors.Stroke
+        stroke.Thickness = 2
+        
+        -- Click to restore
+        btn.MouseButton1Click:Connect(function()
+            self:Restore()
+        end)
+        
+        -- Make draggable
+        self:MakeDraggable(btn, btn)
+        
+        self.Elements.MinButton = btn
+    end
+    
+    -- Add log entry to UI
+    function UI:AddLog(level, message, data)
+        if not self.Elements.LogScroll then return end
+        
+        -- Create entry frame
+        local entry = Instance.new("Frame", self.Elements.LogScroll)
+        entry.Size = UDim2.new(1, -8, 0, 30)
+        entry.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
+        entry.BorderSizePixel = 0
+        
+        -- Corner
+        local corner = Instance.new("UICorner", entry)
+        corner.CornerRadius = UDim.new(0, 4)
+        
+        -- Text
+        local text = Instance.new("TextLabel", entry)
+        text.Size = UDim2.new(1, -10, 1, 0)
+        text.Position = UDim2.new(0, 5, 0, 0)
+        text.BackgroundTransparency = 1
+        text.Text = message
+        text.TextColor3 = Color3.fromRGB(200, 200, 200)
+        text.Font = Enum.Font.Code
+        text.TextSize = 11
+        text.TextXAlignment = Enum.TextXAlignment.Left
+        text.TextYAlignment = Enum.TextYAlignment.Center
+        text.TextTruncate = Enum.TextTruncate.AtEnd
+        
+        -- Color based on level
+        if level == "ERROR" then
+            text.TextColor3 = Color3.fromRGB(255, 80, 80)
+        elseif level == "WARN" then
+            text.TextColor3 = Color3.fromRGB(255, 200, 50)
+        end
+        
+        -- Auto-scroll
+        task.wait()
+        self.Elements.LogScroll.CanvasPosition = Vector2.new(0, 999999)
+        
+        -- Limit entries
+        if #self.Elements.LogScroll:GetChildren() > 150 then
+            self.Elements.LogScroll:GetChildren()[2]:Destroy()
+        end
+    end
+    
+    -- Update status
+    function UI:UpdateStatus()
+        if not self.Elements.Status then return end
+        
+        local text = string.format("OUT: %s | IN: %s | TAMPER: %s | Logs: %d | Remotes: %d",
+            Core.State.Recording.Outbound and "ON" or "OFF",
+            Core.State.Recording.Inbound and "ON" or "OFF",
+            Core.State.TamperEnabled and "ON" or "OFF",
+            Core.State.Count,
+            Core:TableLength(Core.State.RemoteStats)
+        )
+        
+        self.Elements.Status.Text = text
+    end
+    
+    -- Switch tab
+    function UI:SwitchTab(tab)
+        self.CurrentTab = tab
+        -- Clear and show appropriate content
+        self:UpdateStatus()
+    end
+    
+    -- Handle actions
+    function UI:HandleAction(action)
+        if action == "CLEAR" then
+            Core.State.Logs = {}
+            Core.State.Count = 0
+            
+            -- Clear UI
+            for _, v in ipairs(self.Elements.LogScroll:GetChildren()) do
+                if v:IsA("Frame") then
+                    v:Destroy()
+                end
+            end
+            
+            self:AddLog("INFO", "Logs cleared")
+            
+        elseif action == "EXPORT" then
+            self:ExportLogs()
+        end
+        
+        self:UpdateStatus()
+    end
+    
+    -- Export logs
+    function UI:ExportLogs()
+        self:AddLog("INFO", "Exporting logs...")
+        
+        -- Format logs
+        local lines = {
+            "MIZUKAGE " .. Core.Config.Version .. " EXPORT",
+            "Game: " .. Core.State.Game.Name,
+            "ID: " .. Core.State.Game.ID,
+            "Time: " .. os.date("%Y-%m-%d %H:%M:%S"),
+            "Total Logs: " .. Core.State.Count,
+            "Remotes Tracked: " .. Core:TableLength(Core.State.RemoteStats),
+            "========================================"
+        }
+        
+        for _, log in ipairs(Core.State.Logs) do
+            table.insert(lines, string.format("[%s] %s", 
+                os.date("%H:%M:%S", log.time),
+                log.message
+            ))
+        end
+        
+        local content = table.concat(lines, "\n")
+        
+        -- Save to file if possible
+        if writefile then
+            local filename = "Mizukage_" .. Core.State.Game.ID .. "_" .. os.time() .. ".txt"
+            pcall(function() writefile(filename, content) end)
+            self:AddLog("INFO", "Saved to: " .. filename)
+        end
+        
+        -- Copy to clipboard
+        if setclipboard then
+            setclipboard(content)
+            self:AddLog("INFO", "Copied to clipboard")
+        end
+    end
+    
+    -- Minimize
+    function UI:Minimize()
+        self.Elements.Main.Visible = false
+        self.Elements.MinButton.Visible = true
+        self.Elements.MinButton.Position = UDim2.new(0, self.Elements.Main.AbsolutePosition.X, 
+                                                      0, self.Elements.Main.AbsolutePosition.Y)
+        self.Minimized = true
+    end
+    
+    -- Restore
+    function UI:Restore()
+        self.Elements.Main.Visible = true
+        self.Elements.MinButton.Visible = false
+        self.Minimized = false
+    end
+    
+    -- Make draggable
+    function UI:MakeDraggable(dragObj, moveObj)
+        local dragging = false
+        local dragStart
+        local startPos
+        
+        dragObj.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = moveObj.Position
+                
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+        
+        dragObj.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                if dragging then
+                    local delta = input.Position - dragStart
+                    moveObj.Position = UDim2.new(
+                        startPos.X.Scale,
+                        startPos.X.Offset + delta.X,
+                        startPos.Y.Scale,
+                        startPos.Y.Offset + delta.Y
+                    )
+                end
+            end
+        end)
+    end
+    
+    -- Start color animation
+    function UI:StartAnimation()
+        task.spawn(function()
+            local hue = 0
+            while self.Elements.Screen and self.Elements.Screen.Parent do
+                hue = (hue + 0.002) % 1
+                
+                if self.Elements.Main then
+                    local stroke = self.Elements.Main:FindFirstChild("UIStroke")
+                    if stroke then
+                        stroke.Color = Color3.fromHSV(hue, 0.8, 1)
+                    end
+                end
+                
+                if self.Elements.MinButton then
+                    local stroke = self.Elements.MinButton:FindFirstChild("UIStroke")
+                    if stroke then
+                        stroke.Color = Color3.fromHSV(hue, 0.8, 1)
+                    end
+                end
+                
+                task.wait(0.03)
+            end
+        end)
+    end
+    
+    -- Destroy UI
+    function UI:Destroy()
+        self.Elements.Screen:Destroy()
+        Core.State.Active = false
+        getgenv().MizukageV11Loaded = false
+    end
+    
+    -- Create the UI
+    UI:Create()
+    
+    return UI
+end
